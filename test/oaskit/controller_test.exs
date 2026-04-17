@@ -367,12 +367,6 @@ defmodule Oaskit.ControllerTest do
       assert [
                %Oaskit.Spec.Parameter{
                  in: :query,
-                 name: "private",
-                 required: false,
-                 schema: true
-               },
-               %Oaskit.Spec.Parameter{
-                 in: :query,
                  name: "foo",
                  required: false,
                  schema: %{type: :string}
@@ -382,6 +376,12 @@ defmodule Oaskit.ControllerTest do
                  name: "bar",
                  required: true,
                  schema: %{type: :string}
+               },
+               %Oaskit.Spec.Parameter{
+                 in: :query,
+                 name: "private",
+                 required: false,
+                 schema: true
                }
              ] = op.parameters
     end
@@ -402,6 +402,13 @@ defmodule Oaskit.ControllerTest do
         Operation.from_controller!(spec, shared_parameters: @shared_parameters)
 
       assert [
+               # "bar" in path from shared
+               %Oaskit.Spec.Parameter{
+                 in: :path,
+                 name: "bar",
+                 required: true,
+                 schema: %{type: :string}
+               },
                # "foo" from the operation
                %Oaskit.Spec.Parameter{
                  name: "foo",
@@ -415,13 +422,6 @@ defmodule Oaskit.ControllerTest do
                  in: :query,
                  required: false,
                  schema: %{type: :integer}
-               },
-               # "bar" in path from shared
-               %Oaskit.Spec.Parameter{
-                 in: :path,
-                 name: "bar",
-                 required: true,
-                 schema: %{type: :string}
                }
              ] = op.parameters
     end

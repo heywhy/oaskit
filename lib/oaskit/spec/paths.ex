@@ -75,8 +75,9 @@ defmodule Oaskit.Spec.Paths do
     with %{path: path, plug: controller, plug_opts: action, verb: verb} when is_atom(action) <-
            route,
          true <- Code.ensure_loaded?(controller),
-         true <- function_exported?(controller, :__oaskit__, 3),
-         {:ok, op} <- controller.__oaskit__(:operation, action, verb) do
+         true <- function_exported?(controller, :__oaskit__, 4),
+         path_params = params_from_path(path),
+         {:ok, op} <- controller.__oaskit__(:operation, action, verb, path_params) do
       [{route, path, verb, op}]
     else
       _ -> []
@@ -90,5 +91,13 @@ defmodule Oaskit.Spec.Paths do
       ":" <> param -> "{#{param}}"
       segment -> segment
     end)
+  end
+
+  defp params_from_path(path) do
+    matches = Regex.scan(~r/:(\w+)/, path, capture: :all_but_first)
+
+    matches
+    |> Enum.flat_map(&Function.identity/1)
+    |> Map.new(&{&1, nil})
   end
 end

@@ -360,7 +360,7 @@ defmodule Oaskit.Plugs.ValidateRequest do
   end
 
   defp fetch_operation_id(conn, controller, action) do
-    hook(controller, :operation_id, action, method_to_verb(conn.method))
+    hook(controller, :operation_id, action, method_to_verb(conn.method), conn.path_params)
   end
 
   defp warn_undef_action(controller, action, method) do
@@ -393,8 +393,8 @@ defmodule Oaskit.Plugs.ValidateRequest do
     """)
   end
 
-  defp hook(controller, kind, action, arg) do
-    controller.__oaskit__(kind, action, arg)
+  defp hook(controller, kind, action, arg, path_params) do
+    controller.__oaskit__(kind, action, arg, path_params)
   end
 
   Enum.each(Oaskit.Spec.PathItem.verbs(), fn verb ->
