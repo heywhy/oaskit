@@ -193,7 +193,7 @@ defmodule Oaskit.Spec.Operation do
         not Map.has_key?(defined_by_op, {name, loc})
       end)
 
-    all_params = parameters ++ add_parameters
+    all_params = Enum.concat(add_parameters, parameters)
 
     # Skip serializing parameters in dumped/served specs in JSON format
     empty_list_to_nil(all_params)

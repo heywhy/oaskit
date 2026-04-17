@@ -477,10 +477,10 @@ defmodule Oaskit.SpecTest do
       assert %{
                operationId: "meta_after",
                parameters: [
-                 %{in: :query, name: "self1"},
-                 %{in: :query, name: "self2"},
                  %{in: :query, name: "shared1"},
-                 %{in: :query, name: "shared2", schema: %{"pattern" => "[0-9]+"}}
+                 %{in: :query, name: "shared2", schema: %{"pattern" => "[0-9]+"}},
+                 %{in: :query, name: "self1"},
+                 %{in: :query, name: "self2"}
                ],
                tags: ["zzz", "aaa", "shared1", "shared2"]
              } =
@@ -490,9 +490,9 @@ defmodule Oaskit.SpecTest do
       assert %{
                operationId: "meta_override",
                parameters: [
+                 %{in: :query, name: "shared1"},
                  %{in: :query, name: "shared2", schema: %{"overriden" => true}},
-                 %{in: :path, name: "shared1"},
-                 %{in: :query, name: "shared1"}
+                 %{in: :path, name: "shared1"}
                ],
                tags: ["shared1", "zzz", "shared2"]
              } =

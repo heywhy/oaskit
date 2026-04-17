@@ -280,7 +280,7 @@ defmodule Oaskit.Controller do
 
   defmacro operation(action, false) do
     quote do
-      @oaskit_operations {unquote(action), false, nil}
+      @oaskit_operations {unquote(action), false, nil, nil}
     end
   end
 
@@ -288,6 +288,7 @@ defmodule Oaskit.Controller do
     spec = maybe_expand_aliases(spec, __CALLER__)
     spec = ensure_operation_id(spec, action, __CALLER__)
     module = __CALLER__.module
+    {path_params, spec} = Keyword.pop(spec, :path_params)
 
     quote bind_quoted: binding() do
       alias Oaskit.Controller
@@ -308,7 +309,7 @@ defmodule Oaskit.Controller do
             action: action
           )
 
-        @oaskit_operations {action, operation, verb}
+        @oaskit_operations {action, operation, verb, path_params}
         :ok
       rescue
         e ->
@@ -382,10 +383,11 @@ defmodule Oaskit.Controller do
   @doc group: "Controller Macros"
   defmacro use_operation(action, operation_id, opts \\ []) do
     opts = maybe_expand_aliases(opts, __CALLER__)
+    {path_params, opts} = Keyword.pop(opts, :path_params)
 
     quote bind_quoted: binding() do
       {verb, opts} = Controller.__pop_verb(opts)
-      @oaskit_operations {action, {:use_operation, to_string(operation_id)}, verb}
+      @oaskit_operations {action, {:use_operation, to_string(operation_id)}, verb, path_params}
     end
   end
 
@@ -503,14 +505,21 @@ defmodule Oaskit.Controller do
 
   defp ensure_operation_id(spec, action, env) do
     case Keyword.fetch(spec, :operation_id) do
-      {:ok, atom} when is_atom(atom) -> Keyword.put(spec, :operation_id, Atom.to_string(atom))
-      {:ok, str} when is_binary(str) -> spec
-      {:ok, _} -> spec
-      :error -> Keyword.put(spec, :operation_id, operation_id_from_env(action, env))
+      {:ok, atom} when is_atom(atom) ->
+        Keyword.put(spec, :operation_id, Atom.to_string(atom))
+
+      {:ok, str} when is_binary(str) ->
+        spec
+
+      {:ok, _} ->
+        spec
+
+      :error ->
+        Keyword.put(spec, :operation_id, operation_id_from_env(action, spec[:path_params], env))
     end
   end
 
-  defp operation_id_from_env(action, env) do
+  defp operation_id_from_env(action, path_params, env) do
     controller_name =
       env.module
       |> Atom.to_string()
@@ -531,7 +540,7 @@ defmodule Oaskit.Controller do
     # prefix, for instance "Api.V1.User" and "Api.V2.User". Collisions can
     # happen but users are supposed to provide their own operation ids.
     mod_hash =
-      controller_name
+      {controller_name, path_params}
       |> then(&<<:erlang.phash2(&1, 2 ** 32)::little-32>>)
       |> Base.encode32(padding: false)
 
@@ -555,27 +564,27 @@ defmodule Oaskit.Controller do
     validate_duplicate_actions!(oaskit_operations, env)
 
     clauses =
-      Enum.map(oaskit_operations, fn {action, operation, verb} ->
+      Enum.map(Enum.reverse(oaskit_operations), fn {action, operation, verb, path_params} ->
         case operation do
           false ->
             Controller._ignore_action(action)
 
           %Operation{} ->
-            Controller._define_operation(action, operation, verb)
+            Controller._define_operation(action, operation, verb, path_params)
 
           {:use_operation, _} = using ->
-            Controller._define_operation(action, using, verb)
+            Controller._define_operation(action, using, verb, path_params)
         end
       end)
 
     quote do
       @doc false
-      def __oaskit__(kind, action, arg)
+      def __oaskit__(kind, action, arg, path_params \\ %{})
 
       unquote(clauses)
 
       # undef catchall
-      def __oaskit__(kind, action, arg) do
+      def __oaskit__(kind, action, arg, path_params) do
         :__undef__
       end
     end
@@ -584,16 +593,18 @@ defmodule Oaskit.Controller do
   @doc false
   def _ignore_action(action) do
     quote do
-      def __oaskit__(_kind, unquote(action), _verb) do
+      def __oaskit__(_kind, unquote(action), _verb, _path_params) do
         :ignore
       end
     end
   end
 
   @doc false
-  def _define_operation(action, %Operation{} = operation, verb) when is_atom(action) do
+  def _define_operation(action, %Operation{} = operation, verb, path_params)
+      when is_atom(action) do
     operation_id = operation.operationId
     operation = Macro.escape(operation)
+    path_params = escape_path_params(path_params)
 
     quote bind_quoted: binding() do
       @doc false
@@ -602,39 +613,53 @@ defmodule Oaskit.Controller do
 
       # This is used by Paths.from_router / Paths.from_routes to retrieve
       # operations defined with the operation macro.
-      def __oaskit__(:operation, unquote(action), unquote(match_verb)) do
+      def __oaskit__(:operation, unquote(action), unquote(match_verb), unquote(path_params)) do
         {:ok, unquote(Macro.escape(operation))}
       end
 
       # This is used by the ValidateRequest plug to retrieve the operation from
       # the phoenix controller/action.
-      def __oaskit__(:operation_id, unquote(action), unquote(match_verb)) do
+      def __oaskit__(:operation_id, unquote(action), unquote(match_verb), unquote(path_params)) do
         {:ok, unquote(operation_id)}
       end
     end
   end
 
-  def _define_operation(action, {:use_operation, operation_id}, verb) do
+  def _define_operation(action, {:use_operation, operation_id}, verb, path_params) do
+    path_params = escape_path_params(path_params)
+
     quote bind_quoted: binding() do
       @doc false
       match_verb = Controller.__verb_matcher(verb)
 
       # This is used by the ValidateRequest plug to retrieve the operation from
       # the phoenix controller/action.
-      def __oaskit__(:operation_id, unquote(action), unquote(match_verb)) do
+      def __oaskit__(:operation_id, unquote(action), unquote(match_verb), unquote(path_params)) do
         {:ok, unquote(operation_id)}
       end
     end
   end
 
+  defp escape_path_params(nil) do
+    Macro.escape({:_, [], Elixir})
+  end
+
+  defp escape_path_params(path_params) when is_list(path_params) do
+    list = Enum.map(path_params, &{&1, {:_, [], Elixir}})
+
+    Macro.escape({:%{}, [], list})
+  end
+
   # Ensures that if multiple operations use the same controller function, a
-  # :mehtod option is given to the `operation` or `use_operation` macro to be
+  # :method option is given to the `operation` or `use_operation` macro to be
   # able to match on it.
   defp validate_duplicate_actions!(oaskit_operations, env) do
     bad_cases =
       oaskit_operations
-      |> Enum.filter(fn {_, definition, _verb} -> definition != false end)
-      |> Enum.group_by(fn {action, _, _} -> action end, fn {_, op, verb} -> {op, verb} end)
+      |> Enum.filter(fn {_, definition, _verb, _path_params} -> definition != false end)
+      |> Enum.group_by(fn {action, _, _, _} -> action end, fn {_, op, verb, path_params} ->
+        {op, verb, path_params}
+      end)
       # Keep only groups with multiple operations on the same action, and where
       # at least one action does not provide the verb.
       |> Enum.flat_map(fn
@@ -645,7 +670,8 @@ defmodule Oaskit.Controller do
           []
 
         {action, [_, _ | _] = ops} ->
-          without_verb = Enum.filter(ops, fn {_op, verb} -> verb == nil end)
+          without_verb =
+            Enum.filter(ops, fn {_op, verb, path_params} -> verb == nil and path_params == nil end)
 
           case without_verb do
             [] -> []
@@ -668,8 +694,8 @@ defmodule Oaskit.Controller do
 
   defp collect_op_ids(list) do
     Enum.map(list, fn
-      {{:use_operation, op_id}, _verb} -> op_id
-      {%Operation{operationId: op_id}, _verb} -> op_id
+      {{:use_operation, op_id}, _verb, _path_params} -> op_id
+      {%Operation{operationId: op_id}, _verb, _path_params} -> op_id
     end)
   end
 
