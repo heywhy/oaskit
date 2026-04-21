@@ -533,7 +533,7 @@ defmodule Oaskit.Internal.Normalizer do
   end
 
   defp schema_title(_schema, module) do
-    inspect(module)
+    module |> Module.split() |> List.last()
   end
 
   defp available_schema_refname(schemas, title) do
