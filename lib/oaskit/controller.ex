@@ -93,7 +93,7 @@ defmodule Oaskit.Controller do
   Parameters support the following options:
 
   * `:in` - Either `:path` or `:query`. Required.
-  * `:schema` - A JSON schema or Module name exporting a `schema/0` function.
+  * `:schema` - A JSON schema or Module name exporting a `json_schema/0` function.
   * `:required` - A boolean, defaults to `true` for `:path` params, `false`
     otherwise.
   * `:examples` - A list of examples.
@@ -553,7 +553,7 @@ defmodule Oaskit.Controller do
     prefix_size = byte_size(string) - suffix_size
 
     case string do
-      <<prefix::binary-size(prefix_size), ^suffix::binary>> -> prefix
+      <<prefix::binary-size(^prefix_size), ^suffix::binary>> -> prefix
       _ -> string
     end
   end
